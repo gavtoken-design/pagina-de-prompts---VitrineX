@@ -3,97 +3,99 @@
 import {useAtom} from 'jotai';
 import React, {useState} from 'react';
 import {DetectTypeAtom} from './atoms';
-import {DetectTypes} from './Types';
 
 interface ModeDefinition {
-  label: DetectTypes;
+  label: any;
   icon: string;
-  description: string;
-  technicalDetails: string;
+  category: 'Spatial' | 'Creative';
+  details: string;
 }
 
 const MODES: ModeDefinition[] = [
-  {
-    label: 'Caixas delimitadoras 2D',
-    icon: '◰',
-    description: 'Localização Retangular',
-    technicalDetails: 'Detecta a posição (x, y, largura, altura) e o rótulo de até 25 objetos na cena.'
+  { 
+    label: 'Caixas delimitadoras 2D', 
+    icon: '🎯', 
+    category: 'Spatial', 
+    details: 'Detecta a localização retangular de objetos. Ideal para contagem e localização rápida de múltiplos itens na cena.' 
   },
-  {
-    label: 'Máscaras de segmentação',
-    icon: '▩',
-    description: 'Silhuetas Pixel-a-Pixel',
-    technicalDetails: 'Extrai o contorno exato de objetos, ideal para recortes precisos e análise de forma.'
+  { 
+    label: 'Máscaras de segmentação', 
+    icon: '🎭', 
+    category: 'Spatial', 
+    details: 'Extrai o contorno exato de cada objeto pixel a pixel. Permite isolar formas complexas com alta precisão.' 
   },
-  {
-    label: 'Pontos',
-    icon: '•',
-    description: 'Coordenadas Precisas',
-    technicalDetails: 'Identifica pontos específicos de interesse ou o centro de massa de componentes individuais.'
+  { 
+    label: 'Pontos', 
+    icon: '📍', 
+    category: 'Spatial', 
+    details: 'Identifica coordenadas centrais ou pontos de interesse específicos. Útil para guiar braços robóticos ou garras.' 
   },
-  {
-    label: 'Detecção 3D',
-    icon: '🧊',
-    description: 'Voxel & Profundidade',
-    technicalDetails: 'Gera cuboides que representam o volume e a posição de objetos no espaço tridimensional.'
+  { 
+    label: 'Detecção 3D', 
+    icon: '📦', 
+    category: 'Spatial', 
+    details: 'Estima o volume e a profundidade dos objetos no espaço tridimensional, gerando coordenadas [y,x,z].' 
+  },
+  { 
+    label: 'Geração Pro', 
+    icon: '✨', 
+    category: 'Creative', 
+    details: 'Utiliza o Gemini 3 Pro para gerar imagens fotorrealistas de alta resolução baseadas puramente em descrições textuais.' 
+  },
+  { 
+    label: 'Edição IA', 
+    icon: '🎨', 
+    category: 'Creative', 
+    details: 'Permite modificar a imagem atual, adicionando, removendo ou alterando elementos através de comandos naturais.' 
   }
 ];
 
 export function DetectTypeSelector({iconOnly = false}: {iconOnly?: boolean}) {
-  const [detectType, setDetectType] = useAtom(DetectTypeAtom);
-  const [hoveredMode, setHoveredMode] = useState<ModeDefinition | null>(null);
+  const [activeMode, setActiveMode] = useAtom(DetectTypeAtom);
+  const [hovered, setHovered] = useState<string | null>(null);
 
   return (
-    <div className="flex flex-col gap-4 relative">
-      <div className={`flex ${iconOnly ? 'flex-col gap-4' : 'flex-col gap-2'}`}>
-        {MODES.map((mode) => (
-          <div 
-            key={mode.label}
-            className="relative group"
-            onMouseEnter={() => setHoveredMode(mode)}
-            onMouseLeave={() => setHoveredMode(null)}
-          >
-            <button
-              onClick={() => setDetectType(mode.label)}
-              className={`flex items-center transition-all duration-300 w-full ${
-                iconOnly 
-                  ? `w-10 h-10 justify-center rounded-xl ${detectType === mode.label ? 'bg-[var(--accent-color)] text-white scale-110 shadow-[0_0_15px_rgba(59,104,255,0.4)]' : 'text-white/40 hover:text-white hover:bg-white/5 border border-white/5'}`
-                  : `px-4 py-3 rounded-xl text-left border ${detectType === mode.label ? 'bg-[var(--accent-color)] text-white border-transparent shadow-lg' : 'hover:bg-white/5 text-[var(--text-secondary)] border-white/5'}`
-              }`}
-            >
-              <span className="text-xl">{mode.icon}</span>
-              {!iconOnly && (
-                <div className="flex flex-col ml-3 overflow-hidden">
-                  <span className="text-xs font-bold whitespace-nowrap">{mode.label}</span>
-                  <span className={`text-[9px] uppercase tracking-wider opacity-60 transition-all ${detectType === mode.label ? 'text-white' : 'text-[var(--text-secondary)]'}`}>
-                    {mode.description}
-                  </span>
-                </div>
-              )}
-            </button>
-
-            {/* Tooltip para modo iconOnly */}
-            {iconOnly && hoveredMode?.label === mode.label && (
-              <div className="absolute left-full ml-4 top-1/2 -translate-y-1/2 w-48 p-3 glass-panel rounded-xl z-[100] border border-white/10 shadow-2xl animate-in slide-in-from-left-2 fade-in duration-200 pointer-events-none">
-                <div className="text-[10px] font-black text-[var(--accent-color)] uppercase tracking-widest mb-1">{mode.label}</div>
-                <div className="text-[9px] text-white/80 leading-relaxed font-medium">{mode.technicalDetails}</div>
+    <div className="flex flex-col gap-6 w-full">
+      {['Spatial', 'Creative'].map(cat => (
+        <div key={cat} className="flex flex-col gap-2">
+          {!iconOnly && (
+            <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/30 ml-2 mb-1">
+              {cat} Engine
+            </span>
+          )}
+          <div className="flex flex-col gap-1.5">
+            {MODES.filter(m => m.category === cat).map((mode) => (
+              <div 
+                key={mode.label} 
+                className="relative group"
+                onMouseEnter={() => setHovered(mode.label)}
+                onMouseLeave={() => setHovered(null)}
+              >
+                <button
+                  onClick={() => setActiveMode(mode.label)}
+                  className={`flex items-center w-full transition-all duration-300 rounded-xl ${
+                    iconOnly ? 'w-11 h-11 justify-center' : 'px-4 py-2.5'
+                  } ${
+                    activeMode === mode.label 
+                      ? 'bg-[var(--accent-color)] text-white shadow-lg shadow-blue-500/20 border border-blue-400/30' 
+                      : 'hover:bg-white/5 text-white/50 border border-transparent hover:border-white/5'
+                  }`}
+                >
+                  <span className="text-lg">{mode.icon}</span>
+                  {!iconOnly && <span className="text-[11px] font-bold ml-3 whitespace-nowrap">{mode.label}</span>}
+                </button>
+                
+                {hovered === mode.label && (
+                  <div className={`absolute ${iconOnly ? 'left-full ml-4' : 'left-full ml-2'} top-1/2 -translate-y-1/2 w-56 p-3 glass-panel rounded-xl z-[100] border border-white/10 shadow-2xl pointer-events-none animate-in fade-in zoom-in-95 duration-200`}>
+                    <div className="text-[10px] font-black text-[var(--accent-color)] uppercase mb-1">{mode.label}</div>
+                    <div className="text-[9px] text-white/60 leading-tight font-medium">{mode.details}</div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {/* Painel de ajuda contextual para modo expandido */}
-      {!iconOnly && hoveredMode && (
-        <div className="mt-2 p-3 bg-black/40 rounded-xl border border-white/5 animate-in fade-in duration-300">
-          <div className="flex items-start gap-2">
-            <span className="text-[var(--accent-color)] text-xs mt-0.5">ℹ</span>
-            <p className="text-[10px] text-white/50 leading-relaxed italic">
-              {hoveredMode.technicalDetails}
-            </p>
+            ))}
           </div>
         </div>
-      )}
+      ))}
     </div>
   );
 }

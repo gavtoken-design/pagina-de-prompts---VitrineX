@@ -1,3 +1,4 @@
+
 /* tslint:disable */
 /**
  * @license
@@ -27,7 +28,10 @@ import {
   PointsAtom,
   RequestJsonAtom,
   ResponseJsonAtom,
+  GalleryImagesAtom,
+  SelectedImageIndexAtom,
 } from './atoms';
+import {imageOptions} from './consts';
 
 export function useResetState() {
   const [, setImageSent] = useAtom(ImageSentAtom);
@@ -37,8 +41,10 @@ export function useResetState() {
   const [, setBumpSession] = useAtom(BumpSessionAtom);
   const [, setRequestJson] = useAtom(RequestJsonAtom);
   const [, setResponseJson] = useAtom(ResponseJsonAtom);
+  const [, setGallery] = useAtom(GalleryImagesAtom);
+  const [, setSelectedIdx] = useAtom(SelectedImageIndexAtom);
 
-  return () => {
+  return (fullReset: boolean = false) => {
     setImageSent(false);
     setBoundingBoxes2D([]);
     setBoundingBoxMasks([]);
@@ -46,5 +52,10 @@ export function useResetState() {
     setPoints([]);
     setRequestJson('');
     setResponseJson('');
+    
+    if (fullReset) {
+      setGallery(imageOptions);
+      setSelectedIdx(0);
+    }
   };
 }

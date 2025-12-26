@@ -5,20 +5,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-// Copyright 2025 Google LLC
-
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-
-//     https://www.apache.org/licenses/LICENSE-2.0
-
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 export const colors = [
   'rgb(0, 0, 0)',
   'rgb(255, 255, 255)',
@@ -104,30 +90,62 @@ export const defaultPromptParts = {
   ]
 };
 
-export const promptSuggestions = {
-  'Caixas delimitadoras 2D': [
-    'todos os objetos pequenos',
-    'utensílios de cozinha',
-    'frutas e vegetais',
-    'ferramentas robóticas',
-    'itens na borda da mesa'
-  ],
-  'Máscaras de segmentação': [
-    'o objeto mais importante',
-    'todos os itens individuais',
-    'recipientes e potes',
-    'partes da cena'
-  ],
-  'Pontos': [
-    'centro de cada item',
-    'pontas das ferramentas',
-    'contorno dos objetos'
-  ],
-  'Detecção 3D': [
-    'volumes principais',
-    'objetos empilhados',
-    'espaços vazios entre itens'
-  ]
+// Sugestões mapeadas pelo índice da imagem em imageOptions
+export const imageContextualSuggestions: Record<number, Record<string, string[]>> = {
+  0: { // aloha-arms-table
+    'Caixas delimitadoras 2D': ['braços robóticos', 'ferramentas na mesa', 'cabos de conexão'],
+    'Máscaras de segmentação': ['cada componente do robô', 'a superfície da mesa'],
+    'Pontos': ['articulações do robô', 'pontas das garras'],
+    'Detecção 3D': ['volume dos braços', 'área de alcance']
+  },
+  1: { // cart
+    'Caixas delimitadoras 2D': ['produtos no carrinho', 'rodas do carrinho', 'alça'],
+    'Máscaras de segmentação': ['cada item individual de mercado', 'a estrutura metálica'],
+    'Pontos': ['centros das embalagens', 'eixo das rodas'],
+    'Detecção 3D': ['espaço interno do carrinho', 'dimensões das caixas']
+  },
+  2: { // mango
+    'Caixas delimitadoras 2D': ['mangas individuais', 'balança eletrônica', 'prato da balança'],
+    'Máscaras de segmentação': ['cada fruta', 'o visor da balança'],
+    'Pontos': ['ponto mais alto de cada manga', 'cantos da balança'],
+    'Detecção 3D': ['volume total das frutas', 'altura da balança']
+  },
+  3: { // gameboard
+    'Caixas delimitadoras 2D': ['peças de xadrez brancas', 'peças pretas', 'casas do tabuleiro'],
+    'Máscaras de segmentação': ['o rei e a rainha', 'o tabuleiro completo'],
+    'Pontos': ['base de cada peça', 'centro do tabuleiro'],
+    'Detecção 3D': ['altura das peças', 'plano do tabuleiro']
+  },
+  4: { // aloha_desk
+    'Caixas delimitadoras 2D': ['monitor', 'teclado', 'objetos de escritório'],
+    'Máscaras de segmentação': ['periféricos', 'área de trabalho livre'],
+    'Pontos': ['cantos do monitor', 'botões principais'],
+    'Detecção 3D': ['profundidade da mesa', 'tamanho do monitor']
+  },
+  5: { // soarm-block
+    'Caixas delimitadoras 2D': ['blocos coloridos', 'base de madeira', 'garra'],
+    'Máscaras de segmentação': ['blocos empilhados', 'peça por peça'],
+    'Pontos': ['vértices dos blocos', 'ponto de contato da garra'],
+    'Detecção 3D': ['cubo de cada bloco', 'altura da pilha']
+  },
+  6: { // top-down-fruits
+    'Caixas delimitadoras 2D': ['maçãs', 'bananas', 'frutas cítricas'],
+    'Máscaras de segmentação': ['contorno de cada fruta', 'espaços entre elas'],
+    'Pontos': ['centro geométrico das frutas'],
+    'Detecção 3D': ['esfericidade', 'distribuição espacial']
+  },
+  7: { // aloha-arms-trash
+    'Caixas delimitadoras 2D': ['lixeira', 'resíduos', 'braço robótico'],
+    'Máscaras de segmentação': ['interior da lixeira', 'objetos descartados'],
+    'Pontos': ['borda da lixeira', 'alvo de descarte'],
+    'Detecção 3D': ['profundidade do cesto', 'posição do robô']
+  },
+  8: { // grapes
+    'Caixas delimitadoras 2D': ['cachos de uva', 'uvas individuais', 'folhas'],
+    'Máscaras de segmentação': ['cada bago de uva', 'o caule'],
+    'Pontos': ['ponto de fixação no caule'],
+    'Detecção 3D': ['densidade do cacho', 'espaço ocupado']
+  }
 };
 
 export const defaultPrompts = {

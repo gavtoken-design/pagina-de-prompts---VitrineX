@@ -1,25 +1,6 @@
 
 /* tslint:disable */
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-// Copyright 2025 Google LLC
-
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-
-//     https://www.apache.org/licenses/LICENSE-2.0
-
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 import {useAtom} from 'jotai';
-import getStroke from 'perfect-freehand';
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {ResizePayload, useResizeDetector} from 'react-resize-detector';
 import {
@@ -38,6 +19,7 @@ import {
   PointsAtom,
   RevealOnHoverModeAtom,
   SelectedObjectIndexAtom,
+  IsLoadingAtom
 } from './atoms';
 import {lineOptions, segmentationColorsRgb} from './consts';
 import {getSvgPathFromStroke} from './utils';
@@ -46,28 +28,23 @@ export function Content() {
   const [imageSrc] = useAtom(ImageSrcAtom);
   const [boundingBoxes2D] = useAtom(BoundingBoxes2DAtom);
   const [boundingBoxMasks] = useAtom(BoundingBoxMasksAtom);
-  const [boundingBoxes3D] = useAtom(BoundingBoxes3DAtom);
   const [detectType] = useAtom(DetectTypeAtom);
-  const [, setImageSent] = useAtom(ImageSentAtom);
   const [points] = useAtom(PointsAtom);
-  const [fov] = useAtom(FovAtom);
-  const [revealOnHover] = useAtom(RevealOnHoverModeAtom);
-  const [hoverEntered, setHoverEntered] = useState(false);
+  const [isLoading] = useAtom(IsLoadingAtom);
   const [selectedIdx, setSelectedIdx] = useAtom(SelectedObjectIndexAtom);
-  const [drawMode] = useAtom(DrawModeAtom);
-  const [lines, setLines] = useAtom(LinesAtom);
-  const [activeColor] = useAtom(ActiveColorAtom);
-  const [brushSize] = useAtom(BrushSizeAtom);
-  const [brushOpacity] = useAtom(BrushOpacityAtom);
 
-  const boundingBoxContainerRef = useRef<HTMLDivElement | null>(null);
+  const [mousePos, setMousePos] = useState({x: 0, y: 0});
   const [containerDims, setContainerDims] = useState({ width: 0, height: 0 });
   const [activeMediaDimensions, setActiveMediaDimensions] = useState({ width: 1, height: 1 });
 
+  // Zoom and Pan State
+  const [scale, setScale] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStart = useRef({ x: 0, y: 0 });
+
   const onResize = useCallback((el: ResizePayload) => {
-    if (el.width && el.height) {
-      setContainerDims({ width: el.width, height: el.height });
-    }
+    if (el.width && el.height) setContainerDims({ width: el.width, height: el.height });
   }, []);
 
   const {ref: containerRef} = useResizeDetector({onResize});
@@ -76,177 +53,153 @@ export function Content() {
     const {width, height} = activeMediaDimensions;
     const aspectRatio = width / height;
     const containerAspectRatio = containerDims.width / containerDims.height;
-    if (aspectRatio < containerAspectRatio) {
-      return {
-        height: containerDims.height,
-        width: containerDims.height * aspectRatio,
-      };
-    } else {
-      return {
-        width: containerDims.width,
-        height: containerDims.width / aspectRatio,
-      };
-    }
+    return aspectRatio < containerAspectRatio 
+      ? { height: containerDims.height, width: containerDims.height * aspectRatio }
+      : { width: containerDims.width, height: containerDims.width / aspectRatio };
   }, [containerDims, activeMediaDimensions]);
 
-  const projectPoint = useCallback((x: number, y: number, z: number) => {
-    const nx = (x - 0.5) * 2;
-    const ny = (y - 0.5) * 2;
-    const nz = (z - 0.5) * 2 + 3;
-    const f = 1 / Math.tan((fov * Math.PI) / 360);
-    const px = (nx * f) / nz;
-    const py = (ny * f) / nz;
-    return { x: (px + 1) / 2, y: (py + 1) / 2 };
-  }, [fov]);
+  // Handle Zooming
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const zoomSpeed = 0.001;
+    const newScale = Math.min(Math.max(scale - e.deltaY * zoomSpeed, 0.5), 10);
+    setScale(newScale);
+  };
 
-  const downRef = useRef<Boolean>(false);
+  // Handle Panning
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return; // Only left click for pan
+    setIsDragging(true);
+    dragStart.current = { x: e.clientX - offset.x, y: e.clientY - offset.y };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    
+    // Update local mouse pos for HUD (normalized to the image space)
+    const localX = (e.clientX - rect.left) / rect.width;
+    const localY = (e.clientY - rect.top) / rect.height;
+    setMousePos({ x: localX, y: localY });
+
+    if (isDragging) {
+      setOffset({
+        x: e.clientX - dragStart.current.x,
+        y: e.clientY - dragStart.current.y
+      });
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    setIsDragging(false);
+    e.currentTarget.releasePointerCapture(e.pointerId);
+  };
+
+  const resetView = () => {
+    setScale(1);
+    setOffset({ x: 0, y: 0 });
+  };
 
   return (
-    <div ref={containerRef} className="w-1/2 h-full relative bg-black flex items-center justify-center overflow-hidden">
-      {imageSrc ? (
-        <img
-          src={imageSrc}
-          className="absolute top-0 left-0 w-full h-full object-contain"
-          alt="Original"
-          onLoad={(e) => {
-            setActiveMediaDimensions({
-              width: e.currentTarget.naturalWidth,
-              height: e.currentTarget.naturalHeight,
-            });
-          }}
-        />
-      ) : null}
-      <div
-        className={`absolute pointer-events-auto ${hoverEntered ? 'hide-box' : ''} ${drawMode ? 'cursor-crosshair' : ''}`}
-        ref={boundingBoxContainerRef}
-        onPointerMove={(e) => {
-          if (downRef.current && drawMode) {
-            const parentBounds = boundingBoxContainerRef.current!.getBoundingClientRect();
-            setLines((prev) => {
-              const lastLine = prev[prev.length - 1];
-              return [
-                ...prev.slice(0, prev.length - 1),
-                {
-                  ...lastLine,
-                  pts: [
-                    ...lastLine.pts,
-                    [
-                      (e.clientX - parentBounds.left) / boundingBoxContainer!.width,
-                      (e.clientY - parentBounds.top) / boundingBoxContainer!.height,
-                    ],
-                  ]
-                }
-              ];
-            });
-          }
-        }}
-        onPointerDown={(e) => {
-          if (drawMode) {
-            setImageSent(false);
-            (e.target as HTMLElement).setPointerCapture(e.pointerId);
-            downRef.current = true;
-            const parentBounds = boundingBoxContainerRef.current!.getBoundingClientRect();
-            setLines((prev) => [
-              ...prev,
-              {
-                pts: [
-                  [
-                    (e.clientX - parentBounds.left) / boundingBoxContainer!.width,
-                    (e.clientY - parentBounds.top) / boundingBoxContainer!.height,
-                  ],
-                ],
-                color: activeColor,
-                size: brushSize,
-                opacity: brushOpacity,
-              }
-            ]);
-          }
-        }}
-        onPointerUp={(e) => {
-          if (drawMode) {
-            (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-            downRef.current = false;
-          }
-        }}
-        style={{
-          width: boundingBoxContainer.width,
-          height: boundingBoxContainer.height,
-        }}>
+    <div 
+      ref={containerRef} 
+      className="w-full h-full relative flex items-center justify-center overflow-hidden cursor-crosshair select-none touch-none"
+      onWheel={handleWheel}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+    >
+      {/* HUD Telemetry */}
+      <div className="absolute inset-0 pointer-events-none z-20 overflow-hidden">
+        <div className="absolute top-10 left-10 flex flex-col gap-1 mono text-[9px] text-blue-500/60 uppercase">
+          <span>Target_Sync: Active</span>
+          <span>Buffer: {Math.round(activeMediaDimensions.width)}x{Math.round(activeMediaDimensions.height)}</span>
+          <span>FPS: 60.0</span>
+          <span className="text-white/40 mt-2">Scale: {scale.toFixed(2)}x</span>
+        </div>
+        <div className="absolute bottom-10 right-10 flex flex-col items-end gap-1 mono text-[9px] text-blue-500/60 uppercase">
+          <span>Rel_Pos: {mousePos.x.toFixed(3)}, {mousePos.y.toFixed(3)}</span>
+          <span>Pan_X: {Math.round(offset.x)}px</span>
+          <span>Pan_Y: {Math.round(offset.y)}px</span>
+        </div>
+        {isLoading && <div className="scanner-bar" />}
         
-        <svg className="absolute top-0 left-0 w-full h-full pointer-events-none">
-          {lines.map((line, i) => (
-            <path
-              key={i}
-              d={getSvgPathFromStroke(getStroke(line.pts.map(([x, y]) => [x * boundingBoxContainer.width, y * boundingBoxContainer.height, 0.5]), { ...lineOptions, size: line.size }))}
-              fill={line.color}
-              fillOpacity={line.opacity}
-            />
-          ))}
+        {/* Reset View Button */}
+        {(scale !== 1 || offset.x !== 0 || offset.y !== 0) && (
+          <button 
+            onClick={(e) => { e.stopPropagation(); resetView(); }}
+            className="absolute bottom-10 left-10 pointer-events-auto bg-blue-600/20 hover:bg-blue-600/40 border border-blue-500/30 px-3 py-1.5 rounded-lg text-[9px] font-black text-blue-400 uppercase tracking-widest transition-all"
+          >
+            Resetar Visão ⌖
+          </button>
+        )}
+      </div>
+
+      {/* Main Content Group with Transitions */}
+      <div 
+        className="relative transition-transform duration-75 ease-out"
+        style={{ 
+          width: boundingBoxContainer.width, 
+          height: boundingBoxContainer.height,
+          transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
+          transformOrigin: 'center center'
+        }}
+      >
+        {imageSrc && (
+          <img 
+            src={imageSrc} 
+            className="w-full h-full object-contain shadow-2xl pointer-events-none" 
+            onLoad={(e) => setActiveMediaDimensions({ width: e.currentTarget.naturalWidth, height: e.currentTarget.naturalHeight })}
+          />
+        )}
+
+        {/* Tactical SVG HUD */}
+        <svg className="absolute inset-0 w-full h-full pointer-events-none z-10 opacity-30">
+          <line x1="50%" y1="0" x2="50%" y2="100%" className="hud-line" />
+          <line x1="0" y1="50%" x2="100%" y2="50%" className="hud-line" />
+          <circle cx="50%" cy="50%" r="40" fill="none" className="hud-line" strokeDasharray="2 2" />
         </svg>
 
-        {/* Caixas 2D clicáveis */}
-        {detectType === 'Caixas delimitadoras 2D' && boundingBoxes2D.map((box, i) => (
-          <div 
-            key={i} 
-            onClick={() => setSelectedIdx(i === selectedIdx ? null : i)}
-            className={`absolute border-2 cursor-pointer transition-colors ${selectedIdx === i ? 'border-yellow-400 ring-2 ring-yellow-400 bg-yellow-400/20' : 'border-[#3B68FF] bg-[#3B68FF1a] hover:bg-[#3B68FF33]'}`}
-            style={{ top: box.y * 100 + '%', left: box.x * 100 + '%', width: box.width * 100 + '%', height: box.height * 100 + '%' }}>
-            <span className={`${selectedIdx === i ? 'bg-yellow-400' : 'bg-[#3B68FF]'} text-white text-[10px] absolute top-0 left-0 px-1 font-bold`}>
-              {box.label} {selectedIdx === i ? '(Selecionado)' : ''}
-            </span>
-          </div>
-        ))}
-
-        {/* Máscaras clicáveis */}
-        {detectType === 'Máscaras de segmentação' && boundingBoxMasks.map((box, i) => (
-          <div 
-            key={i} 
-            onClick={() => setSelectedIdx(i === selectedIdx ? null : i)}
-            className={`absolute border cursor-pointer ${selectedIdx === i ? 'border-yellow-400 ring-2 ring-yellow-400' : 'border-[#3B68FF44]'}`}
-            style={{ top: box.y * 100 + '%', left: box.x * 100 + '%', width: box.width * 100 + '%', height: box.height * 100 + '%' }}>
-            <BoxMask box={box} index={i} isSelected={selectedIdx === i} />
-            <span className={`${selectedIdx === i ? 'bg-yellow-400 text-black' : 'bg-[#3B68FF] text-white'} text-[10px] absolute -top-4 left-0 px-1 font-bold`}>
-              {box.label}
-            </span>
-          </div>
-        ))}
-
-        {/* Pontos clicáveis */}
-        {detectType === 'Pontos' && points.map((p, i) => {
-          let pos = { x: p.point.x, y: p.point.y };
-          if (p.point.z !== undefined) pos = projectPoint(p.point.x, p.point.y, p.point.z);
-          return (
+        <div className="absolute inset-0 pointer-events-auto">
+          {/* 2D Bounding Boxes */}
+          {detectType === 'Caixas delimitadoras 2D' && boundingBoxes2D.map((box, i) => (
             <div 
               key={i} 
-              onClick={() => setSelectedIdx(i === selectedIdx ? null : i)}
-              className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center cursor-pointer group"
-              style={{ left: `${pos.x * 100}%`, top: `${pos.y * 100}%` }}>
-              <div className={`${selectedIdx === i ? 'bg-yellow-400 text-black' : 'bg-[#3B68FF] text-white'} text-[9px] px-1 rounded-sm mb-1 whitespace-nowrap font-bold`}>{p.label}</div>
-              <div className={`w-3 h-3 rounded-full shadow-lg border-2 transition-transform ${selectedIdx === i ? 'bg-yellow-400 border-black scale-150' : 'bg-white border-[#3B68FF] group-hover:scale-125'}`}></div>
+              onClick={(e) => { e.stopPropagation(); setSelectedIdx(i === selectedIdx ? null : i); }}
+              className={`absolute border-2 transition-all cursor-pointer ${selectedIdx === i ? 'border-blue-400 bg-blue-400/20 shadow-[0_0_20px_rgba(59,130,246,0.5)]' : 'border-white/20 bg-white/5 hover:border-white/40'}`}
+              style={{ top: box.y * 100 + '%', left: box.x * 100 + '%', width: box.width * 100 + '%', height: box.height * 100 + '%' }}>
+              <span className="absolute -top-5 left-0 text-[8px] font-black bg-black/80 px-1 text-white uppercase tracking-tighter mono whitespace-nowrap">
+                ID_{i.toString().padStart(2, '0')} : {box.label}
+              </span>
             </div>
-          );
-        })}
+          ))}
 
-        {/* 3D Boxes (Visual apenas) */}
-        {detectType === 'Detecção 3D' && boundingBoxes3D.map((box, i) => {
-          const corners = [
-            [box.xmin, box.ymin, box.zmin], [box.xmax, box.ymin, box.zmin],
-            [box.xmax, box.ymax, box.zmin], [box.xmin, box.ymax, box.zmin],
-            [box.xmin, box.ymin, box.zmax], [box.xmax, box.ymin, box.zmax],
-            [box.xmax, box.ymax, box.zmax], [box.xmin, box.ymax, box.zmax],
-          ].map(([x, y, z]) => projectPoint(x, y, z));
-          const edges = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
-          return (
-            <div key={i} className="absolute w-full h-full top-0 left-0 pointer-events-none">
-              <svg className="w-full h-full">
-                {edges.map(([a, b], idx) => (
-                  <line key={idx} x1={corners[a].x * boundingBoxContainer.width} y1={corners[a].y * boundingBoxContainer.height} x2={corners[b].x * boundingBoxContainer.width} y2={corners[b].y * boundingBoxContainer.height} stroke="#10b981" strokeWidth="1.5" strokeOpacity="0.8" />
-                ))}
-              </svg>
-              <div className="absolute bg-[#10b981] text-white text-[9px] px-1" style={{ left: corners[4].x * 100 + '%', top: corners[4].y * 100 + '%' }}>{box.label}</div>
+          {/* Segmentation Masks */}
+          {detectType === 'Máscaras de segmentação' && boundingBoxMasks.map((box, i) => (
+            <div 
+              key={i} 
+              onClick={(e) => { e.stopPropagation(); setSelectedIdx(i === selectedIdx ? null : i); }}
+              className="absolute pointer-events-auto cursor-pointer"
+              style={{ top: box.y * 100 + '%', left: box.x * 100 + '%', width: box.width * 100 + '%', height: box.height * 100 + '%' }}>
+              <BoxMask box={box} index={i} isSelected={selectedIdx === i} />
+              <span className="absolute -top-4 left-0 text-[8px] font-black text-blue-400 mono whitespace-nowrap">
+                {box.label}
+              </span>
             </div>
-          );
-        })}
+          ))}
+
+          {/* Points */}
+          {detectType === 'Pontos' && points.map((p, i) => (
+            <div 
+              key={i} 
+              className="absolute -translate-x-1/2 -translate-y-1/2 flex items-center justify-center"
+              style={{ left: `${p.point.x * 100}%`, top: `${p.point.y * 100}%` }}>
+              <div className="w-4 h-4 border border-blue-500 rounded-full animate-ping opacity-50" />
+              <div className="w-1.5 h-1.5 bg-blue-500 rounded-full shadow-[0_0_10px_#3b82f6]" />
+              <span className="ml-3 text-[9px] font-bold text-blue-400 mono bg-black/70 px-1.5 py-0.5 rounded whitespace-nowrap shadow-xl">{p.label}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -254,32 +207,27 @@ export function Content() {
 
 function BoxMask({box, index, isSelected}: {box: any, index: number, isSelected: boolean}) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const rgb = isSelected ? [250, 204, 21] : segmentationColorsRgb[index % segmentationColorsRgb.length];
+  const rgb = isSelected ? [59, 130, 246] : segmentationColorsRgb[index % segmentationColorsRgb.length];
 
   useEffect(() => {
-    if (canvasRef.current) {
-      const ctx = canvasRef.current.getContext('2d');
-      if (ctx) {
-        const image = new Image();
-        image.src = box.imageData;
-        image.onload = () => {
-          canvasRef.current!.width = image.width;
-          canvasRef.current!.height = image.height;
-          ctx.imageSmoothingEnabled = false;
-          ctx.drawImage(image, 0, 0);
-          const pixels = ctx.getImageData(0, 0, image.width, image.height);
-          const data = pixels.data;
-          for (let i = 0; i < data.length; i += 4) {
-            data[i + 3] = data[i];
-            data[i] = rgb[0];
-            data[i + 1] = rgb[1];
-            data[i + 2] = rgb[2];
-          }
-          ctx.putImageData(pixels, 0, 0);
-        };
+    if (!canvasRef.current) return;
+    const ctx = canvasRef.current.getContext('2d');
+    if (!ctx) return;
+    const image = new Image();
+    image.src = box.imageData;
+    image.onload = () => {
+      canvasRef.current!.width = image.width;
+      canvasRef.current!.height = image.height;
+      ctx.drawImage(image, 0, 0);
+      const pixels = ctx.getImageData(0, 0, image.width, image.height);
+      const data = pixels.data;
+      for (let i = 0; i < data.length; i += 4) {
+        data[i + 3] = data[i] * 0.4; // Semi-transparent
+        data[i] = rgb[0]; data[i + 1] = rgb[1]; data[i + 2] = rgb[2];
       }
-    }
+      ctx.putImageData(pixels, 0, 0);
+    };
   }, [box.imageData, rgb, isSelected]);
 
-  return <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full" style={{opacity: isSelected ? 0.7 : 0.4}} />;
+  return <canvas ref={canvasRef} className={`absolute inset-0 w-full h-full transition-opacity ${isSelected ? 'opacity-100' : 'opacity-60'}`} />;
 }
