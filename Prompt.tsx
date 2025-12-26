@@ -6,22 +6,17 @@ import React, {useState} from 'react';
 import {
   BoundingBoxMasksAtom,
   BoundingBoxes2DAtom,
-  BoundingBoxes3DAtom,
   DetectTypeAtom,
-  EditPromptAtom,
   ImageSrcAtom,
   SelectedImageIndexAtom,
   IsLoadingAtom,
   PointsAtom,
-  PromptsAtom,
-  RequestJsonAtom,
   ResponseJsonAtom,
   SelectedImageSizeAtom,
-  SelectedModelAtom,
-  SelectedObjectIndexAtom,
   TemperatureAtom,
   GenerationHistoryAtom,
-  HistoryItem
+  HistoryItem,
+  SelectedObjectIndexAtom
 } from './atoms';
 import {imageContextualSuggestions, defaultPrompts} from './consts';
 import {loadImage} from './utils';
@@ -33,11 +28,10 @@ export function Prompt() {
   const [imageIndex] = useAtom(SelectedImageIndexAtom);
   const [selectedSize] = useAtom(SelectedImageSizeAtom);
   const [temp] = useAtom(TemperatureAtom);
-  const [selectedIdx, setSelectedIdx] = useAtom(SelectedObjectIndexAtom);
+  const [selectedIdx] = useAtom(SelectedObjectIndexAtom);
   const [, setBoundingBoxes2D] = useAtom(BoundingBoxes2DAtom);
   const [, setBoundingBoxMasks] = useAtom(BoundingBoxMasksAtom);
   const [, setPoints] = useAtom(PointsAtom);
-  const [, setRequestJson] = useAtom(RequestJsonAtom);
   const [, setResponseJson] = useAtom(ResponseJsonAtom);
   const [, setHistory] = useAtom(GenerationHistoryAtom);
 
@@ -63,32 +57,13 @@ export function Prompt() {
     setIsLoading(true);
 
     try {
+      const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
       if (isCreative) {
         if (!(window as any).aistudio.hasSelectedApiKey()) await (window as any).aistudio.openSelectKey();
-        const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
         const response = await ai.models.generateContent({
           model: 'gemini-3-pro-image-preview',
           contents: { parts: [{ text: localInput }] },
           config: { imageConfig: { aspectRatio: "1:1", imageSize: selectedSize } }
-        });
-        for (const part of response.candidates[0].content.parts) {
-          if (part.inlineData) { 
-            const newImg = `data:image/png;base64,${part.inlineData.data}`;
-            setImageSrc(newImg); 
-            saveToHistory(newImg, detectType, localInput, "{}");
-            break; 
-          }
-        }
-      } else if (isEditing) {
-        const img = await loadImage(imageSrc!);
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width; canvas.height = img.height;
-        canvas.getContext('2d')!.drawImage(img, 0, 0);
-        const base64 = canvas.toDataURL('image/png').split(',')[1];
-        const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
-        const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash-image',
-          contents: { parts: [{ inlineData: { data: base64, mimeType: 'image/png' } }, { text: localInput }] }
         });
         for (const part of response.candidates[0].content.parts) {
           if (part.inlineData) { 
@@ -108,7 +83,6 @@ export function Prompt() {
         const systemPrompt = defaultPrompts[detectType as keyof typeof defaultPrompts] || "";
         const userPrompt = localInput ? `Foque em: ${localInput}` : "Detecte todos os itens relevantes.";
 
-        const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
         const response = await ai.models.generateContent({
           model: detectType === 'Detecção 3D' ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview',
           contents: { parts: [{ inlineData: { data: base64, mimeType: 'image/png' } }, { text: `${systemPrompt}\n${userPrompt}` }] },
@@ -118,7 +92,7 @@ export function Prompt() {
         const data = JSON.parse(response.text || "[]");
         const jsonStr = JSON.stringify(data, null, 2);
         setResponseJson(jsonStr);
-        saveToHistory(imageSrc!, detectType, localInput || 'Detecção Automática', jsonStr);
+        saveToHistory(imageSrc!, detectType, localInput || 'Inferência Automática', jsonStr);
 
         if (detectType === 'Caixas delimitadoras 2D') {
           setBoundingBoxes2D(data.map((item: any) => ({
@@ -144,87 +118,54 @@ export function Prompt() {
       }
     } catch (e: any) {
       console.error(e);
-      alert("Erro na inferência: " + e.message);
     } finally {
       setIsLoading(false);
       setLocalInput('');
     }
   }
 
-  // Busca sugestões específicas para a imagem atual e modo atual
   const suggestions = imageContextualSuggestions[imageIndex]?.[detectType as string] || [];
 
-  // Descriptive placeholders based on current mode
-  const getPlaceholder = () => {
-    switch (detectType) {
-      case 'Caixas delimitadoras 2D':
-        return "Descreva objetos para detectar (ex: 'todos os cabos', 'caixas azuis')...";
-      case 'Máscaras de segmentação':
-        return "Isolamento detalhado (ex: 'contorne a garra do robô', 'separe cada fruta')...";
-      case 'Pontos':
-        return "Marque pontos específicos (ex: 'centros das rodas', 'pontas das garras')...";
-      case 'Detecção 3D':
-        return "Identifique volumes no espaço (ex: 'caixas na prateleira', 'cubos empilhados')...";
-      case 'Geração Pro':
-        return "Crie uma imagem do zero (ex: 'Um robô futurista limpando uma sala de estar')...";
-      case 'Edição IA':
-        return "Modifique a cena (ex: 'mude a cor da lixeira para vermelho', 'adicione um gato')...";
-      default:
-        return "Refine sua solicitação aqui...";
-    }
-  };
-
   return (
-    <div className="flex flex-col gap-6 w-full max-w-4xl">
-      {/* Suggestions Chips */}
-      {!isCreative && suggestions.length > 0 && (
-        <div className="flex flex-wrap gap-2 animate-in fade-in slide-in-from-top-2 duration-500">
-          <span className="text-[9px] font-black text-white/20 uppercase tracking-widest self-center mr-2">Sugestões:</span>
-          {suggestions.map(s => (
-            <button 
-              key={s}
-              onClick={() => setLocalInput(s)}
-              className="px-3 py-1 rounded-lg bg-white/5 border border-white/5 text-[10px] text-white/60 hover:text-white hover:bg-white/10 hover:border-blue-500/50 transition-all mono"
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-      )}
+    <div className="flex flex-col gap-8 w-full">
+      {/* Dynamic Tags */}
+      <div className="flex flex-wrap gap-2 px-4 h-6 overflow-hidden">
+        <span className="text-[8px] font-black text-white/10 uppercase tracking-widest self-center mr-4">Context_Seeds:</span>
+        {suggestions.map(s => (
+          <button 
+            key={s}
+            onClick={() => setLocalInput(s)}
+            className="px-2.5 py-0.5 rounded-sm border border-cyan-500/10 text-[8px] text-cyan-500/50 hover:text-cyan-400 hover:border-cyan-400/30 transition-all uppercase mono bg-cyan-500/5"
+          >
+            {s}
+          </button>
+        ))}
+      </div>
 
-      {/* Main Bar */}
-      <div className="flex gap-4 items-end">
-        <div className="grow group">
-          <label className="text-[9px] font-black text-blue-500/60 uppercase tracking-[0.3em] ml-4 mb-2 block transition-colors group-focus-within:text-blue-500">
-            {detectType} Controller
-          </label>
-          <div className="relative">
-            <input
-              type="text"
-              value={localInput}
-              onChange={e => setLocalInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleAction()}
-              placeholder={getPlaceholder()}
-              className="w-full h-14 pl-6 pr-6 bg-black/40 border border-white/10 rounded-2xl text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-all outline-none"
-            />
-            <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-3">
-              <span className="text-[10px] mono text-white/20 uppercase">V-Engine_0.7</span>
-            </div>
-          </div>
+      {/* Tactical Input */}
+      <div className="flex items-center gap-6 bg-black/60 p-2 pl-6 rounded-2xl border border-white/5 shadow-inner group focus-within:border-cyan-500/40 transition-all">
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="w-2 h-2 rounded-full bg-cyan-500 shadow-[0_0_8px_cyan]"></div>
+          <span className="text-[10px] mono font-bold text-cyan-400 uppercase tracking-widest">Sys_Input:</span>
         </div>
+        
+        <input
+          type="text"
+          value={localInput}
+          onChange={e => setLocalInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleAction()}
+          placeholder={`Aguardando comandos para ${detectType.toUpperCase()}...`}
+          className="grow bg-transparent text-sm text-white placeholder-white/10 outline-none mono py-4"
+        />
 
         <button
           onClick={handleAction}
-          disabled={isLoading || (!isCreative && !imageSrc)}
-          className={`h-14 px-10 rounded-2xl font-black text-[11px] uppercase tracking-[0.3em] transition-all flex items-center gap-3 shadow-2xl ${
-            isLoading ? 'bg-blue-600/50 cursor-wait' : 'bg-blue-600 hover:bg-blue-500 active:scale-95 shadow-blue-900/30'
+          disabled={isLoading}
+          className={`h-14 px-10 rounded-xl font-black text-[10px] uppercase tracking-[0.3em] transition-all flex items-center gap-3 ${
+            isLoading ? 'bg-white/5 text-white/20' : 'bg-cyan-500 text-black hover:bg-cyan-400 shadow-[0_0_30px_rgba(6,182,212,0.3)]'
           }`}
         >
-          {isLoading ? (
-            <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-          ) : (
-            <>Executar <span className="opacity-40">↵</span></>
-          )}
+          {isLoading ? 'Executando...' : 'Run_Sequence'}
         </button>
       </div>
     </div>

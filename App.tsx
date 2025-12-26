@@ -1,7 +1,7 @@
 
 /* tslint:disable */
 import {useAtom} from 'jotai';
-import React, {useState} from 'react';
+import React, {useEffect, useState} from 'react';
 import {Content} from './Content';
 import {DetectTypeSelector} from './DetectTypeSelector';
 import {ExampleImages} from './ExampleImages';
@@ -14,15 +14,91 @@ import {
   TemperatureAtom,
   IsLoadingAtom,
   ResponseJsonAtom,
-  ActiveTabAtom
+  ActiveTabAtom,
+  GenerationHistoryAtom,
+  GalleryImagesAtom,
+  SelectedImageIndexAtom,
+  DetectTypeAtom,
+  BoundingBoxes2DAtom,
+  BoundingBoxMasksAtom,
+  PointsAtom
 } from './atoms';
+
+const STORAGE_KEY = 'gemini_studio_session_v1';
 
 export default function App() {
   const [fov, setFov] = useAtom(FovAtom);
   const [temp, setTemp] = useAtom(TemperatureAtom);
   const [isLoading] = useAtom(IsLoadingAtom);
-  const [responseJson] = useAtom(ResponseJsonAtom);
+  const [responseJson, setResponseJson] = useAtom(ResponseJsonAtom);
   const [activeTab] = useAtom(ActiveTabAtom);
+  const [history, setHistory] = useAtom(GenerationHistoryAtom);
+  const [gallery, setGallery] = useAtom(GalleryImagesAtom);
+  const [selectedIndex, setSelectedIndex] = useAtom(SelectedImageIndexAtom);
+  const [detectType, setDetectType] = useAtom(DetectTypeAtom);
+  const [boxes2d, setBoxes2d] = useAtom(BoundingBoxes2DAtom);
+  const [masks, setMasks] = useAtom(BoundingBoxMasksAtom);
+  const [points, setPoints] = useAtom(PointsAtom);
+
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  // Load Session on Mount
+  useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const data = JSON.parse(saved);
+        if (data.fov) setFov(data.fov);
+        if (data.temp) setTemp(data.temp);
+        if (data.history) setHistory(data.history);
+        if (data.gallery) setGallery(data.gallery);
+        if (data.selectedIndex !== undefined) setSelectedIndex(data.selectedIndex);
+        if (data.detectType) setDetectType(data.detectType);
+        if (data.responseJson) setResponseJson(data.responseJson);
+        if (data.boxes2d) setBoxes2d(data.boxes2d);
+        if (data.masks) setMasks(data.masks);
+        if (data.points) setPoints(data.points);
+      } catch (e) {
+        console.error("Failed to hydrate session", e);
+      }
+    }
+    setIsHydrated(true);
+  }, []);
+
+  // Save Session on Changes
+  useEffect(() => {
+    if (!isHydrated) return;
+
+    const sessionData = {
+      fov,
+      temp,
+      history,
+      gallery: gallery.filter(img => !img.startsWith('blob:')), // We don't save volatile blobs
+      selectedIndex,
+      detectType,
+      responseJson,
+      boxes2d,
+      masks,
+      points
+    };
+
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(sessionData));
+    } catch (e) {
+      console.warn("Storage limit might be reached, failed to auto-save some data", e);
+    }
+  }, [fov, temp, history, gallery, selectedIndex, detectType, responseJson, boxes2d, masks, points, isHydrated]);
+
+  if (!isHydrated) {
+    return (
+      <div className="h-screen w-screen bg-black flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
+          <span className="text-[10px] font-black text-white/40 uppercase tracking-[0.5em]">Hydrating_Session...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-black text-slate-200">
