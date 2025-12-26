@@ -1,0 +1,76 @@
+
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;700&family=JetBrains+Mono:wght@400;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-color: #05070A;
+  --panel-color: #0D1117;
+  --accent-color: #3B68FF;
+  --accent-hover: #5479FF;
+  --text-primary: #F0F6FC;
+  --text-secondary: #8B949E;
+  --border-color: #30363D;
+  --success-color: #10b981;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+  font-family: 'Space Grotesk', sans-serif;
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #30363d;
+  border-radius: 10px;
+}
+
+.glass-panel {
+  background: rgba(13, 17, 23, 0.85);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.checkerboard {
+  background-image: 
+    linear-gradient(45deg, #0a0a0a 25%, transparent 25%), 
+    linear-gradient(-45deg, #0a0a0a 25%, transparent 25%), 
+    linear-gradient(45deg, transparent 75%, #0a0a0a 75%), 
+    linear-gradient(-45deg, transparent 75%, #0a0a0a 75%);
+  background-size: 32px 32px;
+  background-position: 0 0, 0 16px, 16px -16px, -16px 0px;
+  background-color: #050505;
+}
+
+button.primary {
+  @apply bg-[#3B68FF] hover:bg-[#5479FF] text-white font-bold py-2 px-6 rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 uppercase tracking-widest text-[11px];
+}
+
+button.secondary {
+  @apply bg-transparent hover:bg-white/5 text-[#8B949E] border border-white/10 font-bold py-2 px-4 rounded-xl transition-all duration-200 flex items-center justify-center gap-2 uppercase tracking-tighter text-[10px];
+}
+
+select, textarea, input {
+  @apply bg-black/40 border border-white/10 rounded-xl p-2 focus:outline-none focus:border-[#3B68FF] transition-colors text-white font-medium;
+}
+
+.mono {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Custom UI Tweaks */
+.status-pill {
+  @apply flex items-center gap-2 px-3 py-1 bg-white/5 rounded-full border border-white/5 text-[10px] font-black tracking-widest uppercase;
+}
